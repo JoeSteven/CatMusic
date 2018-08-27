@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">CatMusic</string>
+    <string name="user_name">输入网易云歌单id</string>
+    <string name="btn_add">增加</string>
+    <string name="btn_refresh">刷新</string>
+    <string name="btn_change">更改</string>
+
+</resources>
