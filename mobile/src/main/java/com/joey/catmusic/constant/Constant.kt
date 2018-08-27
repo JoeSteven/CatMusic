@@ -7,6 +7,10 @@ package com.joey.catmusic.constant
  */
 object Constant {
     const val SP_KEY_PLAYLIST = "SP_KEY_PLAYLIST"
-    const val SP_KEY_USER = "SP_KEY_USER"
+
     const val SP_KEY_TRACKS = "SP_KEY_TRACKS"
+
+    const val SP_KEY_LAST_TRACK = "SP_KEY_LAST_TRACK"
+
+    const val SP_KEY_LAST_PLAYLIST = "SP_KEY_LAST_PLAYLIST"
 }

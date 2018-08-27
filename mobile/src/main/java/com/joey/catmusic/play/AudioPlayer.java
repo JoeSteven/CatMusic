@@ -9,7 +9,7 @@ import java.io.IOException;
  * author:Joey
  * date:2018/8/27
  */
-public class AudioPlayer implements MediaPlayer.OnPreparedListener, MediaPlayer.OnErrorListener {
+public class AudioPlayer implements MediaPlayer.OnPreparedListener, MediaPlayer.OnErrorListener, MediaPlayer.OnCompletionListener {
     private MediaPlayer player;
     private AudioCallback callback;
 
@@ -59,6 +59,7 @@ public class AudioPlayer implements MediaPlayer.OnPreparedListener, MediaPlayer.
     private void setAllListeners(MediaPlayer player) {
         player.setOnPreparedListener(this);
         player.setOnErrorListener(this);
+        player.setOnCompletionListener(this);
     }
 
     @Override
@@ -77,10 +78,18 @@ public class AudioPlayer implements MediaPlayer.OnPreparedListener, MediaPlayer.
         return false;
     }
 
+    @Override
+    public void onCompletion(MediaPlayer mp) {
+        if (callback != null) {
+            callback.onComplete();
+        }
+    }
+
     public interface AudioCallback{
         void onPlaying();
         void onPause();
         void onError();
+        void onComplete();
     }
 
     public void setCallback(AudioCallback callback) {

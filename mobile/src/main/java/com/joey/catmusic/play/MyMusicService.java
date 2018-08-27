@@ -1,5 +1,8 @@
 package com.joey.catmusic.play;
 
+import android.arch.lifecycle.Lifecycle;
+import android.arch.lifecycle.LifecycleObserver;
+import android.content.SharedPreferences;
 import android.media.AudioManager;
 import android.media.MediaMetadata;
 import android.media.MediaPlayer;
@@ -17,9 +20,17 @@ import android.support.v4.media.session.PlaybackStateCompat;
 import android.util.Log;
 import android.util.LongSparseArray;
 
+import com.joey.catmusic.constant.Constant;
 import com.joey.catmusic.data.playlist.Playlist;
 import com.joey.catmusic.data.playlist.Track;
+import com.joey.catmusic.music.IMusicView;
 import com.joey.catmusic.music.MusicData;
+import com.joey.catmusic.music.MusicPresenter;
+import com.joey.cheetah.core.global.Global;
+import com.joey.cheetah.core.storage.SharedPrefHelper;
+import com.joey.cheetah.mvp.auto.Presenter;
+
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -77,12 +88,15 @@ import java.util.List;
  * <p>
  * </ul>
  */
-public class MyMusicService extends MediaBrowserServiceCompat implements AudioPlayer.AudioCallback {
+public class MyMusicService extends MediaBrowserServiceCompat implements AudioPlayer.AudioCallback, IMusicView {
 
     private MediaSessionCompat mSession;
     private LongSparseArray<Track> tracks = new LongSparseArray<>();
     private AudioPlayer mPlayer = new AudioPlayer();
     private Track currentTrack;
+    private MediaSessionCallback callback;
+    private Playlist currentPlaylist;
+    private MusicPresenter presenter;
 
     @Override
     public void onCreate() {
@@ -90,17 +104,46 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
 
         mSession = new MediaSessionCompat(this, "MyMusicService");
         setSessionToken(mSession.getSessionToken());
-        mSession.setCallback(new MediaSessionCallback());
+        callback =  new MediaSessionCallback();
+        mSession.setCallback(callback);
         mSession.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS |
                 MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
         mPlayer.setCallback(this);
+        presenter = new MusicPresenter(this);
+        if (MusicData.INSTANCE.getPlaylists().isEmpty()) {
+            presenter.init();
+        } else {
+            restoreData();
+        }
     }
 
+    @Override
+    public void showList(@NotNull List<Playlist> list) {
+        restoreData();
+    }
+
+    private void restoreData() {
+        int trackID = SharedPrefHelper.from(Global.context()).getInt(Constant.SP_KEY_LAST_TRACK, -1);
+        long playlistID = SharedPrefHelper.from(Global.context()).getLong(Constant.SP_KEY_LAST_PLAYLIST, -1);
+        if (trackID != -1 && playlistID != -1) {
+            currentPlaylist = MusicData.INSTANCE.getPlaylist(playlistID);
+            tracks.clear();
+            for (Track track: currentPlaylist.getTracks()) {
+                tracks.put(track.getId(), track);
+            }
+            currentTrack = tracks.get(trackID);
+            callback.onPlayFromMediaId(String.valueOf(currentTrack.getId()), null);
+        }
+    }
 
     @Override
     public void onDestroy() {
         mSession.release();
         mPlayer.release();
+        SharedPrefHelper.from(Global.context())
+                .put(Constant.SP_KEY_LAST_TRACK, currentTrack.getId())
+                .apply(Constant.SP_KEY_LAST_PLAYLIST, currentPlaylist.getId());
+        presenter.onDestroyed(this);
     }
 
     @Override
@@ -125,8 +168,10 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
 
     private void showTracks(String parentMediaId, Result<List<MediaItem>> result) {
         List<MediaItem> items = new ArrayList<>();
-        Playlist playlist = MusicData.INSTANCE.getPlaylist(Long.parseLong(parentMediaId));
-        for (Track track: playlist.getTracks()) {
+        currentPlaylist = MusicData.INSTANCE.getPlaylist(Long.parseLong(parentMediaId));
+        tracks.clear();
+
+        for (Track track: currentPlaylist.getTracks()) {
             tracks.put(track.getId(), track);
             Log.d("CatMusic" , "track:" + track.getName() +" id:" + track.getId() );
             MediaMetadataCompat mediaMetadataCompat = new MediaMetadataCompat.Builder()
@@ -162,6 +207,11 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
     }
 
     @Override
+    public void onComplete() {
+        callback.onSkipToNext();
+    }
+
+    @Override
     public void onPause() {
         mSession.setPlaybackState(buildState(PlaybackStateCompat.STATE_PAUSED));
     }
@@ -177,6 +227,7 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
                         SystemClock.elapsedRealtime())
                 .build();
     }
+
 
     private final class MediaSessionCallback extends MediaSessionCompat.Callback {
         @Override
@@ -256,5 +307,37 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
         public void onPlayFromSearch(final String query, final Bundle extras) {
             Log.d("CatMusic", "onPlayFromSearch" + query);
         }
+    }
+
+    @Override
+    public void toast(String s) {
+
+    }
+
+    @Override
+    public void toast(int i) {
+
+    }
+
+    @NonNull
+    @Override
+    public Lifecycle getLifecycle() {
+        return new Lifecycle() {
+            @Override
+            public void addObserver(@NonNull LifecycleObserver observer) {
+
+            }
+
+            @Override
+            public void removeObserver(@NonNull LifecycleObserver observer) {
+
+            }
+
+            @NonNull
+            @Override
+            public State getCurrentState() {
+                return null;
+            }
+        };
     }
 }

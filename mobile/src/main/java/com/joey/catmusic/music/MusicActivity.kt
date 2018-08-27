@@ -1,9 +1,12 @@
 package com.joey.catmusic.music
 
 import android.support.v7.widget.LinearLayoutManager
+import android.util.Log
 import com.joey.catmusic.R
 import com.joey.catmusic.data.playlist.Playlist
+import com.joey.catmusic.data.playlist.Track
 import com.joey.catmusic.music.Adpater.PlaylistItemViewBinder
+import com.joey.catmusic.play.AudioPlayer
 import com.joey.cheetah.core.list.CheetahAdapter
 import com.joey.cheetah.mvp.AbsActivity
 import com.joey.cheetah.mvp.auto.Presenter
@@ -15,14 +18,13 @@ class MusicActivity : AbsActivity(), IMusicView {
 
     @Presenter
     private val presenter: MusicPresenter = MusicPresenter(this)
-    private val adapter : CheetahAdapter = CheetahAdapter();
+    private val adapter : CheetahAdapter = CheetahAdapter()
 
     override fun initLayout(): Int {
         return R.layout.activity_music
     }
 
     override fun initPresenter() {
-        presenter.init()
     }
 
     override fun initView() {
