@@ -23,16 +23,27 @@ class MusicRepository {
 
     fun refresh(ids: PlaylistIds): Single<List<Playlist>> {
         return Observable.fromIterable(ids.list)
-                .flatMap { queryTracks(it).toObservable() }
+                .flatMap { Observable
+                        .concat(queryTracksFromNet(it),
+                                queryTracksFromLocal(it))
+                        .firstOrError()
+                        .toObservable()
+                        }
                 .map { it.playlist }
                 .toList()
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
     }
 
-    fun queryTracks(id: Long): Single<PlaylistResponse> {
-        return Observable.concat(Api.music()
-                .queryTracks(id), Observable.create { emitter ->
+    fun queryTracksFromNet(id: Long): Observable<PlaylistResponse> {
+        return Api.music()
+                .queryTracks(id)
+                .doOnNext{ t -> cacheTracks(id, t) }
+    }
+
+    fun queryTracksFromLocal(id:Long) : Observable<PlaylistResponse> {
+        return Observable.create<PlaylistResponse> {
+            emitter ->
             val data = SharedPrefHelper.from(Global.context())
                     .getString(Constant.SP_KEY_TRACKS + id, "")
             if (!TextUtils.isEmpty(data)) {
@@ -41,12 +52,10 @@ class MusicRepository {
             } else {
                 emitter.onError(Throwable("no cache tracks!"))
             }
-        })
-                .firstOrError()
-                .doOnSuccess { t -> cacheTracks(id, t) }
-                .subscribeOn(Schedulers.io())
-                .observeOn(AndroidSchedulers.mainThread())
+        }
     }
+
+
 
 
     private fun cacheTracks(id: Long, t: PlaylistResponse) {

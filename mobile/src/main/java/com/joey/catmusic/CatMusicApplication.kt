@@ -2,6 +2,7 @@ package com.joey.catmusic
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import com.joey.catmusic.init.CatInitManager
 import com.joey.cheetah.core.CheetahApplicationInitializer
 
@@ -17,6 +18,7 @@ class CatMusicApplication : Application() {
     }
 
     override fun onCreate() {
+        Log.d("CatMusic", "Application start")
         CheetahApplicationInitializer.beforeSuperOnCreate()
         super.onCreate()
         CheetahApplicationInitializer.afterSuperOnCreate()

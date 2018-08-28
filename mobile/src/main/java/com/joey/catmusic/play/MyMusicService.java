@@ -2,7 +2,9 @@ package com.joey.catmusic.play;
 
 import android.arch.lifecycle.Lifecycle;
 import android.arch.lifecycle.LifecycleObserver;
+import android.content.Context;
 import android.content.SharedPreferences;
+import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.MediaMetadata;
 import android.media.MediaPlayer;
@@ -28,6 +30,7 @@ import com.joey.catmusic.music.MusicData;
 import com.joey.catmusic.music.MusicPresenter;
 import com.joey.cheetah.core.global.Global;
 import com.joey.cheetah.core.storage.SharedPrefHelper;
+import com.joey.cheetah.core.utils.CLog;
 import com.joey.cheetah.mvp.auto.Presenter;
 
 import org.jetbrains.annotations.NotNull;
@@ -101,7 +104,8 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
     @Override
     public void onCreate() {
         super.onCreate();
-
+        CLog.forceLog(true);
+        CLog.d("CatMusic", "My Service start");
         mSession = new MediaSessionCompat(this, "MyMusicService");
         setSessionToken(mSession.getSessionToken());
         callback =  new MediaSessionCallback();
@@ -110,11 +114,24 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
                 MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
         mPlayer.setCallback(this);
         presenter = new MusicPresenter(this);
+        requestFocus();
         if (MusicData.INSTANCE.getPlaylists().isEmpty()) {
             presenter.init();
         } else {
             restoreData();
         }
+    }
+
+    private void requestFocus() {
+        AudioManager manager = (AudioManager)getSystemService(Context.AUDIO_SERVICE);
+        if (manager == null) return;
+        int result = manager.requestAudioFocus(focusChange -> {
+            switch (focusChange) {
+                case AudioManager.AUDIOFOCUS_LOSS:
+                    mPlayer.stop();
+            }
+        }, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+        CLog.d("CatMusic", "request focus:" + result);
     }
 
     @Override
@@ -131,8 +148,8 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
             for (Track track: currentPlaylist.getTracks()) {
                 tracks.put(track.getId(), track);
             }
-            currentTrack = tracks.get(trackID);
-            callback.onPlayFromMediaId(String.valueOf(currentTrack.getId()), null);
+
+           showCurrentSong(tracks.get(trackID));
         }
     }
 
@@ -140,10 +157,25 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
     public void onDestroy() {
         mSession.release();
         mPlayer.release();
-        SharedPrefHelper.from(Global.context())
-                .put(Constant.SP_KEY_LAST_TRACK, currentTrack.getId())
-                .apply(Constant.SP_KEY_LAST_PLAYLIST, currentPlaylist.getId());
+        if (currentTrack != null && currentPlaylist != null) {
+            SharedPrefHelper.from(Global.context())
+                    .put(Constant.SP_KEY_LAST_TRACK, currentTrack.getId())
+                    .apply(Constant.SP_KEY_LAST_PLAYLIST, currentPlaylist.getId());
+        }
         presenter.onDestroyed(this);
+    }
+
+    private void showCurrentSong(Track track) {
+        if (track == null) return;
+        currentTrack = track;
+        MediaMetadataCompat mediaMetadataCompat = new MediaMetadataCompat.Builder()
+                .putText(MediaMetadataCompat.METADATA_KEY_TITLE, track.getName())
+                .putText(MediaMetadataCompat.METADATA_KEY_ALBUM, track.getAl().getName())
+                .putText(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, String.valueOf(track.getId()))
+                .putText(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, track.getAl().getPicUrl())
+                .build();
+        mSession.setMetadata(mediaMetadataCompat);
+        mSession.setPlaybackState(buildState(PlaybackStateCompat.STATE_STOPPED));
     }
 
     @Override
@@ -158,7 +190,7 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
     @Override
     public void onLoadChildren(@NonNull final String parentMediaId,
                                @NonNull final Result<List<MediaItem>> result) {
-        Log.d("CatMusic", "load children:" + parentMediaId);
+        CLog.d("CatMusic", "load children:" + parentMediaId);
         if ("root".equals(parentMediaId)) {
             showPlaylist(result);
         } else {
@@ -173,7 +205,7 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
 
         for (Track track: currentPlaylist.getTracks()) {
             tracks.put(track.getId(), track);
-            Log.d("CatMusic" , "track:" + track.getName() +" id:" + track.getId() );
+            CLog.d("CatMusic" , "track:" + track.getName() +" id:" + track.getId() );
             MediaMetadataCompat mediaMetadataCompat = new MediaMetadataCompat.Builder()
                     .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, String.valueOf(track.getId()))
                     .putString(MediaMetadataCompat.METADATA_KEY_TITLE, track.getName())
@@ -190,6 +222,7 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
             MediaMetadataCompat mediaMetadataCompat = new MediaMetadataCompat.Builder()
                     .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, String.valueOf(playlist.getId()))
                     .putString(MediaMetadataCompat.METADATA_KEY_TITLE, playlist.getName())
+                    .putText(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, playlist.getCoverImgUrl())
                     .build();
             items.add(new MediaItem(mediaMetadataCompat.getDescription(), MediaItem.FLAG_BROWSABLE));
         }
@@ -232,46 +265,42 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
     private final class MediaSessionCallback extends MediaSessionCompat.Callback {
         @Override
         public void onPlay() {
-            mPlayer.resume();
-            mSession.setPlaybackState(buildState(PlaybackStateCompat.STATE_PLAYING));
+            boolean resume = false;
+            if (currentTrack != null) {
+                resume = mPlayer.resume("http://music.163.com/song/media/outer/url?id="+currentTrack.getId()+".mp3");
+            }
+            mSession.setPlaybackState(buildState(resume? PlaybackStateCompat.STATE_PLAYING: PlaybackStateCompat.STATE_BUFFERING));
         }
 
         @Override
         public void onSkipToQueueItem(long queueId) {
-            Log.d("CatMusic", "onSkipToQueueItem" + queueId);
+            CLog.d("CatMusic", "onSkipToQueueItem" + queueId);
         }
 
         @Override
         public void onSeekTo(long position) {
-            Log.d("CatMusic", "onSeekTo" + position);
+            CLog.d("CatMusic", "onSeekTo" + position);
         }
 
         @Override
         public void onPlayFromMediaId(String mediaId, Bundle extras) {
-            Log.d("CatMusic", "onPlayFromMediaId" + mediaId);
+            CLog.d("CatMusic", "onPlayFromMediaId" + mediaId);
 
             Track track = tracks.get(Long.parseLong(mediaId));
-            currentTrack = track;
-            MediaMetadataCompat mediaMetadataCompat = new MediaMetadataCompat.Builder()
-                    .putText(MediaMetadataCompat.METADATA_KEY_TITLE, track.getName())
-                    .putText(MediaMetadataCompat.METADATA_KEY_ALBUM, track.getAl().getName())
-                    .putText(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, String.valueOf(track.getId()))
-                    .putText(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, track.getAl().getPicUrl())
-                    .build();
-            mSession.setMetadata(mediaMetadataCompat);
+            showCurrentSong(track);
             mPlayer.play("http://music.163.com/song/media/outer/url?id="+track.getId()+".mp3");
             mSession.setPlaybackState(buildState(PlaybackStateCompat.STATE_BUFFERING));
         }
 
         @Override
         public void onPause() {
-            Log.d("CatMusic", "onPause");
+            CLog.d("CatMusic", "onPause");
             mPlayer.pause();
         }
 
         @Override
         public void onStop() {
-            Log.d("CatMusic", "onStop");
+            CLog.d("CatMusic", "onStop");
             mPlayer.stop();
             mSession.setPlaybackState(buildState(PlaybackStateCompat.STATE_STOPPED));
         }
@@ -289,7 +318,7 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
 
         @Override
         public void onSkipToPrevious() {
-            Log.d("CatMusic", "onSkipToPrevious");
+            CLog.d("CatMusic", "onSkipToPrevious");
             int pos = tracks.indexOfKey(currentTrack.getId());
             pos--;
             if (pos < 0) {
@@ -300,12 +329,12 @@ public class MyMusicService extends MediaBrowserServiceCompat implements AudioPl
 
         @Override
         public void onCustomAction(String action, Bundle extras) {
-            Log.d("CatMusic", "onCustomAction" + action);
+            CLog.d("CatMusic", "onCustomAction" + action);
         }
 
         @Override
         public void onPlayFromSearch(final String query, final Bundle extras) {
-            Log.d("CatMusic", "onPlayFromSearch" + query);
+            CLog.d("CatMusic", "onPlayFromSearch" + query);
         }
     }
 

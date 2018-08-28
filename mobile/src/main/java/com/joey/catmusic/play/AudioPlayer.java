@@ -12,6 +12,7 @@ import java.io.IOException;
 public class AudioPlayer implements MediaPlayer.OnPreparedListener, MediaPlayer.OnErrorListener, MediaPlayer.OnCompletionListener {
     private MediaPlayer player;
     private AudioCallback callback;
+    private boolean prepared;
 
     public AudioPlayer() {
         player = new MediaPlayer();
@@ -19,6 +20,7 @@ public class AudioPlayer implements MediaPlayer.OnPreparedListener, MediaPlayer.
     }
 
     public void play(String url) {
+        prepared = false;
         if (player == null) {
             player = new MediaPlayer();
             setAllListeners(player);
@@ -33,17 +35,30 @@ public class AudioPlayer implements MediaPlayer.OnPreparedListener, MediaPlayer.
     }
 
     public void pause() {
-        if (player != null) player.pause();
+        if (player == null) return;
+        if (prepared && player.isPlaying()){
+            player.pause();
+        }else {
+            stop();
+        }
         callback.onPause();
     }
 
-    public void resume() {
-        if (player == null) return;
-        player.start();
+    public boolean resume(String url) {
+        if (player!= null && prepared) {
+            player.start();
+            return true;
+        } else {
+            play(url);
+            return false;
+        }
     }
 
     public void stop() {
-        if (player != null) player.stop();
+        if (player != null && prepared){
+            player.stop();
+        }
+        prepared = false;
     }
 
     public void release() {
@@ -54,6 +69,7 @@ public class AudioPlayer implements MediaPlayer.OnPreparedListener, MediaPlayer.
         if (callback != null) {
             callback = null;
         }
+        prepared = false;
     }
 
     private void setAllListeners(MediaPlayer player) {
@@ -64,6 +80,7 @@ public class AudioPlayer implements MediaPlayer.OnPreparedListener, MediaPlayer.
 
     @Override
     public void onPrepared(MediaPlayer mp) {
+        prepared = true;
         mp.start();
         if (callback != null) {
             callback.onPlaying();
