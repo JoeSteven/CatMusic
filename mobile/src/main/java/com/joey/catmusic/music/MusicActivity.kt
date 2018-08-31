@@ -30,11 +30,14 @@ class MusicActivity : AbsActivity(), IMusicView {
     override fun initView() {
         btnAdd.setOnClickListener { presenter.addPlaylist(etPlaylist.text.toString()) }
         btnRefresh.setOnClickListener { presenter.refresh() }
-        adapter.register(Playlist::class.java, PlaylistItemViewBinder().setOnLongClickListener{_, playlist ->  presenter.deletePlaylist(playlist.id)
-             true
-        })
+        adapter.register(Playlist::class.java, PlaylistItemViewBinder().setOnLongClickListener(this::deletePlaylist))
         rvSuccess.layoutManager = LinearLayoutManager(this)
         rvSuccess.adapter = adapter
+    }
+
+    private fun deletePlaylist(pos:Int, playlist: Playlist) : Boolean{
+        presenter.deletePlaylist(playlist.id)
+        return true
     }
 
     override fun showList(list: List<Playlist>) {
